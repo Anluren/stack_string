@@ -13,19 +13,14 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# Header-only library
-add_library(stack_string INTERFACE)
-target_include_directories(stack_string INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
-)
+# Add include subdirectory (defines stack_string target)
+add_subdirectory(include)
 
 # Examples
 option(BUILD_EXAMPLES "Build example programs" ON)
 
-if(BUILD_EXAMPLES)
-    add_executable(basic_usage examples/basic_usage.cpp)
-    target_link_libraries(basic_usage PRIVATE stack_string)
+if(BUILD_EXAMPLES AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    add_subdirectory(examples)
 endif()
 
 # Installation
@@ -35,9 +30,7 @@ install(TARGETS stack_string
     EXPORT StackStringTargets
 )
 
-install(DIRECTORY include/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
+# Installation handled in include/CMakeLists.txt
 
 install(EXPORT StackStringTargets
     FILE StackStringTargets.cmake
