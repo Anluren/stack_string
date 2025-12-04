@@ -2,3 +2,9 @@
 
 add_executable(basic_usage basic_usage.cpp)
 target_link_libraries(basic_usage PRIVATE stack_string)
+
+add_executable(fixed_buf_allocator_usage buffer_allocator_usage.cpp)
+target_link_libraries(fixed_buf_allocator_usage PRIVATE fixed_buf_allocator)
+
+add_executable(mixed_usage mixed_usage.cpp)
+target_link_libraries(mixed_usage PRIVATE stack_string fixed_buf_allocator)

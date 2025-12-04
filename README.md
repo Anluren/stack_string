@@ -1,6 +1,14 @@
 # StackString
 
-A C++17 header-only library providing a `std::string`-like structure that uses pre-allocated stack memory for efficient string operations without heap allocations.
+A C++17 header-only library providing efficient stack-based string storage without heap allocations.
+
+## Components
+
+### 1. StackString
+A `std::string`-like structure that uses pre-allocated stack memory for fixed-capacity string operations.
+
+### 2. FixedBufAllocator
+A custom allocator for `std::basic_string` that uses an external fixed buffer, enabling stack-based allocation with standard library compatibility. Designed for one string instance per buffer.
 
 ## Features
 
@@ -52,6 +60,33 @@ int main() {
 }
 ```
 
+### Using FixedBufAllocator with std::string
+
+```cpp
+#include <fixed_buf_allocator.hpp>
+#include <string>
+
+using namespace stack_string;
+
+int main() {
+    // Create stack buffer
+    char buffer[256];
+    
+    // Create allocator
+    FixedBufAllocator<char> alloc(buffer, sizeof(buffer));
+    
+    // Use with std::basic_string (one string per buffer)
+    using BufferString = std::basic_string<char, std::char_traits<char>, 
+                                           FixedBufAllocator<char>>;
+    
+    BufferString str(alloc);
+    str = "Uses stack memory!";
+    str += " Very efficient!";
+    
+    return 0;
+}
+```
+
 ### Building with CMake
 
 ```bash
@@ -60,8 +95,10 @@ cd build
 cmake ..
 cmake --build .
 
-# Run the example
-./basic_usage
+# Run the examples
+./examples/basic_usage
+./examples/fixed_buf_allocator_usage
+./examples/mixed_usage
 ```
 
 ### Integration
@@ -138,6 +175,40 @@ cbegin(), cend()                    // Const iterators
 ```
 
 ## Examples
+
+### Mixed Usage of StackString and BufferString
+
+```cpp
+#include <stack_string.hpp>
+#include <fixed_buf_allocator.hpp>
+
+using namespace stack_string;
+
+// StackString: Lightweight, template-based
+StackString<128> stack_str;
+stack_str << "Count: " << 42;
+
+// BufferString: std::string compatible, allocator-based
+char buffer[256];
+FixedBufAllocator<char> alloc(buffer, sizeof(buffer));
+using BufferString = std::basic_string<char, std::char_traits<char>, 
+                                       FixedBufAllocator<char>>;
+BufferString buffer_str(alloc);
+buffer_str = "Total: " + std::to_string(100);
+
+// Convert between them using implicit const char* conversion
+BufferString from_stack(alloc);
+from_stack = stack_str.c_str();
+
+StackString<128> from_buffer;
+from_buffer.append(buffer_str.c_str());
+
+// Both work with string_view
+std::string_view sv1 = stack_str;
+std::string_view sv2 = buffer_str;
+```
+
+See `examples/mixed_usage.cpp` for a complete demonstration.
 
 ### Building a path
 

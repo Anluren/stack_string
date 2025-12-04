@@ -1,19 +1,27 @@
-# StackString Design Document
+# StackString Library Design Document
 
 ## Overview
 
-StackString is a C++17 header-only library that provides a fixed-capacity string class with stack-allocated storage. It offers a `std::string`-like interface while avoiding heap allocations, making it ideal for performance-critical applications, embedded systems, and scenarios where memory allocation overhead must be minimized.
+The StackString library is a C++17 header-only library that provides stack-based string operations without heap allocations. It consists of two main components:
+
+1. **StackString**: A fixed-capacity string class with stack-allocated storage
+2. **FixedBufAllocator**: A custom allocator for `std::basic_string` using external fixed buffers
+
+Both components offer a way to avoid heap allocations while providing familiar, `std::string`-like interfaces, making them ideal for performance-critical applications, embedded systems, and scenarios where memory allocation overhead must be minimized.
 
 ## Design Goals
 
-1. **Zero heap allocations**: All storage is on the stack, determined at compile-time
+1. **Zero heap allocations**: All storage is on the stack, determined at compile-time or user-provided
 2. **Familiar API**: Closely mimics `std::string` interface for ease of use
 3. **Type flexibility**: Support multiple data types (strings, integers, characters)
 4. **No exceptions**: Predictable behavior with silent truncation on overflow
 5. **Standard library integration**: Seamless interoperability with `std::string`, streams, and algorithms
-6. **Compile-time safety**: Capacity known at compile-time via template parameter
+6. **Compile-time safety**: Capacity known at compile-time via template parameter (StackString)
+7. **Compatibility**: Work with existing std::string-based code (FixedBufAllocator)
 
-## Architecture
+## Components
+
+### StackString Architecture
 
 ### Memory Layout
 
@@ -200,6 +208,153 @@ if (ec == std::errc()) {
 
 **Limitation**: `std::to_chars` is not constexpr in C++17, so integer append cannot be constexpr.
 
+## FixedBufAllocator Component
+
+### Design Overview
+
+FixedBufAllocator is a custom allocator for `std::basic_string` that uses an external fixed buffer provided by the user. This enables using `std::string` with stack-allocated storage while maintaining full standard library compatibility.
+
+### Memory Layout
+
+```cpp
+template <typename T>
+class FixedBufAllocator {
+private:
+    char* m_buffer;           // Pointer to external buffer
+    std::size_t m_capacity;   // Buffer capacity in bytes
+    std::size_t m_used;       // Bytes allocated so far
+};
+```
+
+### Key Design Decisions
+
+#### 1. Internal Usage Tracking
+
+**Decision**: Track buffer usage internally within the allocator
+
+**Rationale**:
+- Simpler API: users only provide buffer and capacity
+- Natural for single-string-per-buffer use case
+- No external state management required
+- Allocator copies share state correctly
+
+**Trade-off**: Designed for one `std::basic_string` instance per buffer. Multiple independent strings would need separate buffers.
+
+#### 2. Monotonic Allocation
+
+**Decision**: `deallocate()` does nothing, only `allocate()` modifies `m_used`
+
+**Rationale**:
+- Matches typical string growth pattern (append-heavy)
+- Simpler implementation with fewer edge cases
+- No fragmentation concerns
+- Suitable for temporary strings with short lifetimes
+
+**Implication**: Buffer space is never reclaimed until the buffer object itself is destroyed.
+
+#### 3. Propagating Allocator
+
+**Decision**: Set all propagate traits to `std::true_type`
+
+```cpp
+using propagate_on_container_copy_assignment = std::true_type;
+using propagate_on_container_move_assignment = std::true_type;
+using propagate_on_container_swap = std::true_type;
+```
+
+**Rationale**:
+- Copy/move operations transfer allocator state correctly
+- Ensures copied strings continue to work
+- Prevents mixing allocators from different buffers
+- Standard requirement for stateful allocators
+
+#### 4. Returns `nullptr` on Exhaustion
+
+**Decision**: Return `nullptr` when buffer is full instead of throwing or falling back to heap
+
+**Rationale**:
+- Consistent with StackString's no-exception policy
+- Allows `std::string` to handle allocation failure (typically throws `std::bad_alloc`)
+- Clearer failure mode than silently switching to heap
+- Simpler implementation
+
+### Usage Pattern
+
+```cpp
+// User provides buffer on stack
+char buffer[256];
+
+// Create allocator (tracks usage internally)
+FixedBufAllocator<char> alloc(buffer, sizeof(buffer));
+
+// Use with std::basic_string
+using BufferString = std::basic_string<char, std::char_traits<char>,
+                                       FixedBufAllocator<char>>;
+BufferString str(alloc);
+str = "Stack allocated!";
+str += " More text.";
+```
+
+## Component Interoperability
+
+### Conversion Between StackString and BufferString
+
+Both components support seamless conversion via standard C++ string interfaces:
+
+**Implicit Conversions:**
+1. **To `const char*`**
+   - StackString: `operator const char*()` 
+   - BufferString: `.c_str()` method
+
+2. **To `std::string_view`**
+   - StackString: `operator std::string_view()`
+   - BufferString: implicit from `std::string` base
+
+### Mixed Usage Example
+
+```cpp
+// Create both types
+StackString<128> stack_str;
+stack_str << "Count: " << 42;
+
+char buffer[256];
+FixedBufAllocator<char> alloc(buffer, sizeof(buffer));
+using BufferString = std::basic_string<char, std::char_traits<char>,
+                                       FixedBufAllocator<char>>;
+BufferString buffer_str(alloc);
+
+// Convert StackString → BufferString
+buffer_str = stack_str.c_str();
+
+// Convert BufferString → StackString  
+StackString<128> from_buffer;
+from_buffer.append(buffer_str.c_str());
+
+// Both work with string_view
+std::string_view sv1 = stack_str;
+std::string_view sv2 = buffer_str;
+```
+
+### When to Use Each Component
+
+**Use StackString when:**
+- You need a lightweight, fixed-capacity string
+- Working with simple string building operations
+- Want minimal syntax overhead
+- Template-based capacity is acceptable
+
+**Use BufferAllocator when:**
+- Need full `std::string` API compatibility
+- Integrating with existing code that expects `std::string`
+- Require advanced string methods (find, substr, etc.)
+- Allocator-based design fits better architecturally
+
+**Both provide:**
+- Zero heap allocations
+- Stack-based storage
+- No exception throwing
+- Standard library interoperability
+
 ## Integration Patterns
 
 ### With std::string
@@ -277,10 +432,26 @@ Potential improvements for future versions:
 
 ## Conclusion
 
-StackString provides a focused solution for fixed-capacity string building without heap allocations. Its design prioritizes:
+StackString and FixedBufAllocator provide complementary solutions for stack-based string operations:
+
+### StackString
 - **Performance**: Zero allocations, minimal overhead
 - **Safety**: Compile-time capacity, no buffer overflows
 - **Usability**: Familiar API, standard library integration
 - **Predictability**: No exceptions, deterministic behavior
+
+### FixedBufAllocator
+- **Compatibility**: Works with `std::basic_string` for full standard library support
+- **Flexibility**: Allocator-based design for existing code integration
+- **Simplicity**: User manages buffer, allocator tracks usage internally
+- **Limitation**: Designed for one string instance per buffer
+
+### Interoperability
+
+Both components work together seamlessly:
+- Implicit conversions to `const char*` and `std::string_view`
+- Can convert between StackString and BufferString
+- Both integrate with standard library containers and algorithms
+- Choose based on needs: StackString for lightweight usage, BufferString for std::string compatibility
 
 The library fills a niche between raw character arrays and `std::string`, offering modern C++ conveniences with embedded-friendly constraints.
