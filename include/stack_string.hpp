@@ -75,37 +75,33 @@ public:
     // Append operations
     constexpr StackString& append(const char* str) {
         if (!str) return *this;
-        
+        // Reserve space for null terminator
         std::size_t len = std::strlen(str);
-        std::size_t space_available = N - m_size;
+        std::size_t space_available = (N > 0 ? N - 1 : 0) - m_size;
         std::size_t to_copy = (len > space_available) ? space_available : len;
-        
         std::copy(str, str + to_copy, m_data + m_size);
         m_size += to_copy;
         m_data[m_size] = '\0';
-        
         return *this;
     }
 
     constexpr StackString& append(std::string_view sv) {
-        std::size_t space_available = N - m_size;
+        // Reserve space for null terminator
+        std::size_t space_available = (N > 0 ? N - 1 : 0) - m_size;
         std::size_t to_copy = (sv.size() > space_available) ? space_available : sv.size();
-        
         std::copy(sv.begin(), sv.begin() + to_copy, m_data + m_size);
         m_size += to_copy;
         m_data[m_size] = '\0';
-        
         return *this;
     }
 
     constexpr StackString& append(char c) {
-        if (m_size >= N) {
+        // Reserve space for null terminator
+        if (m_size >= (N > 0 ? N - 1 : 0)) {
             return *this;
         }
-        
         m_data[m_size++] = c;
         m_data[m_size] = '\0';
-        
         return *this;
     }
 
@@ -113,7 +109,9 @@ public:
     template <typename T>
     constexpr std::enable_if_t<std::is_integral_v<T>, StackString&>
     append(T value) {
-        auto [ptr, ec] = std::to_chars(m_data + m_size, m_data + N, value);
+        // Reserve space for null terminator
+        char* end = m_data + (N > 0 ? N - 1 : 0);
+        auto [ptr, ec] = std::to_chars(m_data + m_size, end, value);
         if (ec == std::errc()) {
             m_size = ptr - m_data;
             m_data[m_size] = '\0';
@@ -171,11 +169,13 @@ public:
     }
 
     constexpr std::size_t max_size() const noexcept {
-        return N;
+        // Reserve space for null terminator
+        return (N > 0 ? N - 1 : 0);
     }
 
     constexpr std::size_t available() const noexcept {
-        return N - m_size;
+        // Reserve space for null terminator
+        return (N > 0 ? N - 1 : 0) - m_size;
     }
 
     constexpr operator std::string_view() const noexcept {

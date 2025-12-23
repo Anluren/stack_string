@@ -18,9 +18,14 @@ add_subdirectory(include)
 
 # Examples
 option(BUILD_EXAMPLES "Build example programs" ON)
+option(BUILD_TESTING "Build unit tests" ON)
 
 if(BUILD_EXAMPLES AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_subdirectory(examples)
+endif()
+
+if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    add_subdirectory(tests)
 endif()
 
 # Installation
